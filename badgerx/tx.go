@@ -3,6 +3,7 @@ package badgerx
 import (
 	"context"
 	"errors"
+	"time"
 
 	storx "github.com/arcgolabs/storx"
 	"github.com/dgraph-io/badger/v4"
@@ -10,6 +11,8 @@ import (
 
 type ViewTx[K any, V any] interface {
 	Get(key K) (V, bool, error)
+	GetMetadata(key K) (Metadata, bool, error)
+	GetRecord(key K) (Record[K, V], bool, error)
 	Exists(key K) (bool, error)
 	Scan(fn func(key K, value V) error) error
 	ScanPrefix(prefix []byte, fn func(key K, value V) error) error
@@ -19,7 +22,9 @@ type UpdateTx[K any, V any] interface {
 	ViewTx[K, V]
 
 	Set(key K, value V, opts ...SetOption) error
+	SetMany(entries []Entry[K, V], opts ...SetOption) error
 	Delete(key K) error
+	DeleteMany(keys ...K) error
 }
 
 type viewTx[K any, V any] struct {
@@ -58,6 +63,59 @@ func (tx *viewTx[K, V]) Get(key K) (V, bool, error) {
 		return zero, false, err
 	}
 	return value, true, nil
+}
+
+func (tx *viewTx[K, V]) GetMetadata(key K) (Metadata, bool, error) {
+	if err := tx.ctx.Err(); err != nil {
+		return Metadata{}, false, err
+	}
+
+	fullKey, err := tx.namespace.fullKey("get_metadata", key)
+	if err != nil {
+		return Metadata{}, false, err
+	}
+
+	item, err := tx.txn.Get(fullKey)
+	switch {
+	case err == nil:
+	case errors.Is(err, badger.ErrKeyNotFound):
+		return Metadata{}, false, nil
+	default:
+		return Metadata{}, false, tx.namespace.wrapError("get_metadata", err, "read key from badger")
+	}
+
+	return readMetadata(item, time.Now()), true, nil
+}
+
+func (tx *viewTx[K, V]) GetRecord(key K) (Record[K, V], bool, error) {
+	if err := tx.ctx.Err(); err != nil {
+		return Record[K, V]{}, false, err
+	}
+
+	fullKey, err := tx.namespace.fullKey("get_record", key)
+	if err != nil {
+		return Record[K, V]{}, false, err
+	}
+
+	item, err := tx.txn.Get(fullKey)
+	switch {
+	case err == nil:
+	case errors.Is(err, badger.ErrKeyNotFound):
+		return Record[K, V]{}, false, nil
+	default:
+		return Record[K, V]{}, false, tx.namespace.wrapError("get_record", err, "read key from badger")
+	}
+
+	value, err := tx.namespace.readItemValue("get_record", item)
+	if err != nil {
+		return Record[K, V]{}, false, err
+	}
+
+	return Record[K, V]{
+		Key:      key,
+		Value:    value,
+		Metadata: readMetadata(item, time.Now()),
+	}, true, nil
 }
 
 func (tx *viewTx[K, V]) Exists(key K) (bool, error) {
@@ -163,6 +221,19 @@ func (tx *updateTx[K, V]) Set(key K, value V, opts ...SetOption) error {
 	return nil
 }
 
+func (tx *updateTx[K, V]) SetMany(entries []Entry[K, V], opts ...SetOption) error {
+	if err := tx.ctx.Err(); err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		if err := tx.Set(entry.Key, entry.Value, opts...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (tx *updateTx[K, V]) Delete(key K) error {
 	if err := tx.ctx.Err(); err != nil {
 		return err
@@ -174,6 +245,19 @@ func (tx *updateTx[K, V]) Delete(key K) error {
 	}
 	if err := tx.txn.Delete(fullKey); err != nil {
 		return tx.namespace.wrapError("delete", err, "delete key from badger")
+	}
+	return nil
+}
+
+func (tx *updateTx[K, V]) DeleteMany(keys ...K) error {
+	if err := tx.ctx.Err(); err != nil {
+		return err
+	}
+
+	for _, key := range keys {
+		if err := tx.Delete(key); err != nil {
+			return err
+		}
 	}
 	return nil
 }

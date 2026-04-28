@@ -5,6 +5,7 @@ import "errors"
 
 var (
 	ErrNotFound       = errors.New("storx: not found")
+	ErrAlreadyExists  = errors.New("storx: already exists")
 	ErrClosed         = errors.New("storx: closed")
 	ErrInvalidKey     = errors.New("storx: invalid key")
 	ErrInvalidValue   = errors.New("storx: invalid value")

@@ -189,6 +189,31 @@ func (b *Bucket[K, V]) Put(ctx context.Context, key K, value V) error {
 	return err
 }
 
+// PutMany writes multiple values in a single write transaction.
+func (b *Bucket[K, V]) PutMany(ctx context.Context, entries ...Entry[K, V]) error {
+	ctx, start := b.startOperation(ctx)
+
+	if err := b.validate("put_many"); err != nil {
+		b.finishOperation(ctx, start, "put_many", err)
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		b.finishOperation(ctx, start, "put_many", err)
+		return err
+	}
+
+	err := b.db.Update(func(tx *bbolt.Tx) error {
+		update, err := b.newUpdateTx(ctx, tx)
+		if err != nil {
+			return err
+		}
+		return update.PutMany(entries...)
+	})
+	err = b.normalizeEngineError("put_many", err)
+	b.finishOperation(ctx, start, "put_many", err)
+	return err
+}
+
 // Delete removes a value from the bucket.
 func (b *Bucket[K, V]) Delete(ctx context.Context, key K) error {
 	ctx, start := b.startOperation(ctx)
@@ -211,6 +236,31 @@ func (b *Bucket[K, V]) Delete(ctx context.Context, key K) error {
 	})
 	err = b.normalizeEngineError("delete", err)
 	b.finishOperation(ctx, start, "delete", err)
+	return err
+}
+
+// DeleteMany removes multiple values in a single write transaction.
+func (b *Bucket[K, V]) DeleteMany(ctx context.Context, keys ...K) error {
+	ctx, start := b.startOperation(ctx)
+
+	if err := b.validate("delete_many"); err != nil {
+		b.finishOperation(ctx, start, "delete_many", err)
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		b.finishOperation(ctx, start, "delete_many", err)
+		return err
+	}
+
+	err := b.db.Update(func(tx *bbolt.Tx) error {
+		update, err := b.newUpdateTx(ctx, tx)
+		if err != nil {
+			return err
+		}
+		return update.DeleteMany(keys...)
+	})
+	err = b.normalizeEngineError("delete_many", err)
+	b.finishOperation(ctx, start, "delete_many", err)
 	return err
 }
 

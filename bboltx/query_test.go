@@ -93,6 +93,57 @@ func TestGetMany(t *testing.T) {
 	}
 }
 
+func TestIterAndWalk(t *testing.T) {
+	users := newQueryBucket(t)
+	ctx := context.Background()
+
+	iter, err := users.Iter(
+		ctx,
+		bboltx.WithPrefix[string]([]byte("a/")),
+		bboltx.WithReverse[string](true),
+	)
+	if err != nil {
+		t.Fatalf("iter failed: %v", err)
+	}
+	defer func() {
+		if closeErr := iter.Close(); closeErr != nil {
+			t.Fatalf("close iter failed: %v", closeErr)
+		}
+	}()
+
+	var iterKeys []string
+	for {
+		entry, ok, err := iter.Next()
+		if err != nil {
+			t.Fatalf("iter next failed: %v", err)
+		}
+		if !ok {
+			break
+		}
+		iterKeys = append(iterKeys, entry.Key)
+	}
+	if !reflect.DeepEqual(iterKeys, []string{"a/2", "a/1"}) {
+		t.Fatalf("unexpected iter keys: %#v", iterKeys)
+	}
+
+	var walkKeys []string
+	err = users.Walk(
+		ctx,
+		func(entry bboltx.Entry[string, user]) error {
+			walkKeys = append(walkKeys, entry.Key)
+			return nil
+		},
+		bboltx.WithStart("a/2"),
+		bboltx.WithEnd("b/1"),
+	)
+	if err != nil {
+		t.Fatalf("walk failed: %v", err)
+	}
+	if !reflect.DeepEqual(walkKeys, []string{"a/2", "b/1"}) {
+		t.Fatalf("unexpected walk keys: %#v", walkKeys)
+	}
+}
+
 func newQueryBucket(t *testing.T) *bboltx.Bucket[string, user] {
 	t.Helper()
 

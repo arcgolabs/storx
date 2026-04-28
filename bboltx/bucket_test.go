@@ -64,6 +64,68 @@ func TestBucketCRUD(t *testing.T) {
 	}
 }
 
+func TestPutManyAndDeleteMany(t *testing.T) {
+	db := openBbolt(t)
+	users := bboltx.NewBucket[string, user](
+		db,
+		"users",
+		keycodec.String(),
+		codec.JSON[user](),
+	)
+
+	ctx := context.Background()
+	if err := users.PutMany(
+		ctx,
+		bboltx.Entry[string, user]{Key: "u1", Value: user{ID: "u1", Name: "alice"}},
+		bboltx.Entry[string, user]{Key: "u2", Value: user{ID: "u2", Name: "bob"}},
+	); err != nil {
+		t.Fatalf("put many failed: %v", err)
+	}
+
+	results, err := users.GetMany(ctx, "u1", "u2")
+	if err != nil {
+		t.Fatalf("get many failed: %v", err)
+	}
+	if len(results) != 2 || !results[0].Found || !results[1].Found {
+		t.Fatalf("expected batch results to exist, got %#v", results)
+	}
+
+	if err := users.DeleteMany(ctx, "u1", "u2"); err != nil {
+		t.Fatalf("delete many failed: %v", err)
+	}
+
+	results, err = users.GetMany(ctx, "u1", "u2")
+	if err != nil {
+		t.Fatalf("get many after delete failed: %v", err)
+	}
+	if results[0].Found || results[1].Found {
+		t.Fatalf("expected batch delete to remove values, got %#v", results)
+	}
+}
+
+func TestRepositorySaveAndGet(t *testing.T) {
+	db := openBbolt(t)
+	repo := bboltx.NewRepository[string, user](
+		db,
+		"users",
+		keycodec.String(),
+		codec.JSON[user](),
+	)
+
+	ctx := context.Background()
+	if err := repo.Save(ctx, "u1", user{ID: "u1", Name: "alice"}); err != nil {
+		t.Fatalf("save failed: %v", err)
+	}
+
+	value, ok, err := repo.Get(ctx, "u1")
+	if err != nil {
+		t.Fatalf("get failed: %v", err)
+	}
+	if !ok || value.Name != "alice" {
+		t.Fatalf("unexpected repo value: ok=%v value=%#v", ok, value)
+	}
+}
+
 func TestMissingBucketAsEmpty(t *testing.T) {
 	db := openBbolt(t)
 	users := bboltx.NewBucket[string, user](

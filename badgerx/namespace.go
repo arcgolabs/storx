@@ -144,6 +144,34 @@ func (n *Namespace[K, V]) Set(ctx context.Context, key K, value V, opts ...SetOp
 	return err
 }
 
+// SetMany writes multiple values in a single write transaction.
+func (n *Namespace[K, V]) SetMany(ctx context.Context, entries []Entry[K, V], opts ...SetOption) error {
+	ctx, start := n.startOperation(ctx)
+
+	if err := n.validate("set_many"); err != nil {
+		n.finishOperation(ctx, start, "set_many", err)
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		n.finishOperation(ctx, start, "set_many", err)
+		return err
+	}
+
+	err := n.db.Update(func(txn *badger.Txn) error {
+		update := &updateTx[K, V]{
+			viewTx: viewTx[K, V]{
+				namespace: n,
+				txn:       txn,
+				ctx:       ctx,
+			},
+		}
+		return update.SetMany(entries, opts...)
+	})
+	err = n.normalizeEngineError("set_many", err)
+	n.finishOperation(ctx, start, "set_many", err)
+	return err
+}
+
 // Delete removes a value from the namespace.
 func (n *Namespace[K, V]) Delete(ctx context.Context, key K) error {
 	ctx, start := n.startOperation(ctx)
@@ -169,6 +197,34 @@ func (n *Namespace[K, V]) Delete(ctx context.Context, key K) error {
 	})
 	err = n.normalizeEngineError("delete", err)
 	n.finishOperation(ctx, start, "delete", err)
+	return err
+}
+
+// DeleteMany removes multiple values in a single write transaction.
+func (n *Namespace[K, V]) DeleteMany(ctx context.Context, keys ...K) error {
+	ctx, start := n.startOperation(ctx)
+
+	if err := n.validate("delete_many"); err != nil {
+		n.finishOperation(ctx, start, "delete_many", err)
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		n.finishOperation(ctx, start, "delete_many", err)
+		return err
+	}
+
+	err := n.db.Update(func(txn *badger.Txn) error {
+		update := &updateTx[K, V]{
+			viewTx: viewTx[K, V]{
+				namespace: n,
+				txn:       txn,
+				ctx:       ctx,
+			},
+		}
+		return update.DeleteMany(keys...)
+	})
+	err = n.normalizeEngineError("delete_many", err)
+	n.finishOperation(ctx, start, "delete_many", err)
 	return err
 }
 

@@ -21,7 +21,9 @@ type UpdateTx[K any, V any] interface {
 	ViewTx[K, V]
 
 	Put(key K, value V) error
+	PutMany(entries ...Entry[K, V]) error
 	Delete(key K) error
+	DeleteMany(keys ...K) error
 	NextSequence() (uint64, error)
 }
 
@@ -195,6 +197,19 @@ func (tx *updateTx[K, V]) Put(key K, value V) error {
 	return tx.bucket.Put(encodedKey, encodedValue)
 }
 
+func (tx *updateTx[K, V]) PutMany(entries ...Entry[K, V]) error {
+	if err := tx.ctx.Err(); err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		if err := tx.Put(entry.Key, entry.Value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (tx *updateTx[K, V]) Delete(key K) error {
 	if err := tx.ctx.Err(); err != nil {
 		return err
@@ -205,6 +220,19 @@ func (tx *updateTx[K, V]) Delete(key K) error {
 		return err
 	}
 	return tx.bucket.Delete(encodedKey)
+}
+
+func (tx *updateTx[K, V]) DeleteMany(keys ...K) error {
+	if err := tx.ctx.Err(); err != nil {
+		return err
+	}
+
+	for _, key := range keys {
+		if err := tx.Delete(key); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (tx *updateTx[K, V]) NextSequence() (uint64, error) {
