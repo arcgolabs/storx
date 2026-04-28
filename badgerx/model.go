@@ -170,6 +170,7 @@ type ModelSchema[K any, V any] struct {
 	Options           []NamespaceOption
 	DefaultSetOptions func(value V) []SetOption
 	Indexes           []ModelIndexDefinition[K, V]
+	Relations         []RelationDefinition
 	Hooks             []ModelHooks[K, V]
 }
 

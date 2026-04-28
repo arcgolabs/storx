@@ -45,6 +45,15 @@ type SecondaryIndexOrderedDefinition[K any, V any, IK any, SK any] struct {
 	Options  []BucketOption
 }
 
+func (d SecondaryIndexOrderedDefinition[K, V, IK, SK]) describeIndex() SchemaIndexDescription {
+	return SchemaIndexDescription{
+		Name:          d.Name,
+		Kind:          IndexKindOrdered,
+		SecondaryType: typeOf[IK](),
+		SortType:      typeOf[SK](),
+	}
+}
+
 func (d SecondaryIndexOrderedDefinition[K, V, IK, SK]) Open(db *bbolt.DB, primaryKeys keycodec.Codec[K]) *SecondaryIndexOrdered[K, V, IK, SK] {
 	return NewSecondaryIndexOrdered(db, d.Name, d.Keys, d.SortKeys, primaryKeys, d.KeyOf, d.SortOf, d.Options...)
 }

@@ -18,6 +18,13 @@ type Migration struct {
 	Up      func(ctx context.Context, tx *bbolt.Tx) error
 }
 
+// MigrationPlan describes the pending migrations without applying them.
+type MigrationPlan struct {
+	CurrentVersion uint64
+	TargetVersion  uint64
+	Pending        []uint64
+}
+
 // Migrator tracks and applies ordered bbolt schema migrations.
 type Migrator struct {
 	db         *bbolt.DB
@@ -69,7 +76,8 @@ func (m *Migrator) Migrate(ctx context.Context, migrations ...Migration) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := validateMigrations(migrations); err != nil {
+	ordered, err := normalizeMigrations(migrations)
+	if err != nil {
 		return err
 	}
 
@@ -87,7 +95,7 @@ func (m *Migrator) Migrate(ctx context.Context, migrations ...Migration) error {
 			current = binary.BigEndian.Uint64(data)
 		}
 
-		for _, migration := range migrations {
+		for _, migration := range ordered {
 			if migration.Version <= current {
 				continue
 			}
@@ -105,7 +113,47 @@ func (m *Migrator) Migrate(ctx context.Context, migrations ...Migration) error {
 	})
 }
 
-func validateMigrations(migrations []Migration) error {
+// Plan returns the pending migration versions without applying them.
+func (m *Migrator) Plan(ctx context.Context, migrations ...Migration) (MigrationPlan, error) {
+	if m == nil || m.db == nil {
+		return MigrationPlan{}, errors.Join(storx.ErrInvalidValue, storx.ErrClosed)
+	}
+	ctx = normalizeContext(ctx)
+	if err := ctx.Err(); err != nil {
+		return MigrationPlan{}, err
+	}
+	ordered, err := normalizeMigrations(migrations)
+	if err != nil {
+		return MigrationPlan{}, err
+	}
+
+	current, err := m.CurrentVersion(ctx)
+	if err != nil {
+		return MigrationPlan{}, err
+	}
+	plan := MigrationPlan{
+		CurrentVersion: current,
+		Pending:        make([]uint64, 0, len(ordered)),
+	}
+	for _, migration := range ordered {
+		if migration.Version <= current {
+			continue
+		}
+		plan.Pending = append(plan.Pending, migration.Version)
+		plan.TargetVersion = migration.Version
+	}
+	if len(plan.Pending) == 0 {
+		plan.TargetVersion = current
+	}
+	return plan, nil
+}
+
+// DryRun is an alias of Plan for migration callers.
+func (m *Migrator) DryRun(ctx context.Context, migrations ...Migration) (MigrationPlan, error) {
+	return m.Plan(ctx, migrations...)
+}
+
+func normalizeMigrations(migrations []Migration) ([]Migration, error) {
 	ordered := append([]Migration(nil), migrations...)
 	sort.Slice(ordered, func(i, j int) bool {
 		return ordered[i].Version < ordered[j].Version
@@ -113,13 +161,12 @@ func validateMigrations(migrations []Migration) error {
 	var previous uint64
 	for index, migration := range ordered {
 		if migration.Version == 0 || migration.Up == nil {
-			return errors.Join(storx.ErrInvalidValue, storx.ErrCodec)
+			return nil, errors.Join(storx.ErrInvalidValue, storx.ErrCodec)
 		}
 		if index > 0 && migration.Version == previous {
-			return errors.Join(storx.ErrInvalidValue, storx.ErrCodec)
+			return nil, errors.Join(storx.ErrInvalidValue, storx.ErrCodec)
 		}
 		previous = migration.Version
 	}
-	copy(migrations, ordered)
-	return nil
+	return ordered, nil
 }

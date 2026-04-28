@@ -488,4 +488,14 @@ func TestModelStoreOrderedIndexAndPage(t *testing.T) {
 	if len(nextPage.Entries) != 1 || nextPage.Entries[0].Value.Email != "b@example.com" {
 		t.Fatalf("unexpected second ordered page: %#v", nextPage)
 	}
+
+	filtered, err := teamIndex.FindByIndex(ctx, store, "team-a", func(value indexedUser) bool {
+		return value.Email >= "b@example.com"
+	}, 1, false)
+	if err != nil {
+		t.Fatalf("ordered find by index failed: %v", err)
+	}
+	if len(filtered) != 1 || filtered[0].Email != "b@example.com" {
+		t.Fatalf("unexpected ordered filtered values: %#v", filtered)
+	}
 }

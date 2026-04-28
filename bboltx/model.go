@@ -181,6 +181,7 @@ type ModelSchema[K any, V any] struct {
 	Options          []BucketOption
 	SequenceAssigner func(seq uint64, value *V) K
 	Indexes          []ModelIndexDefinition[K, V]
+	Relations        []RelationDefinition
 	Hooks            []ModelHooks[K, V]
 }
 
