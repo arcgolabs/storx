@@ -433,3 +433,59 @@ func TestModelStoreHooks(t *testing.T) {
 		t.Fatalf("unexpected after ops: %#v", afterOps)
 	}
 }
+
+func TestModelStoreOrderedIndexAndPage(t *testing.T) {
+	db := openBadger(t)
+	teamIndex := badgerx.NewSecondaryIndexOrdered[string, indexedUser, string, string](
+		db,
+		"users_by_team_email",
+		keycodec.String(),
+		keycodec.String(),
+		keycodec.String(),
+		func(value indexedUser) string { return value.Name },
+		func(value indexedUser) string { return value.Email },
+	)
+	store := badgerx.NewModelStore[string, indexedUser](
+		db,
+		"users",
+		keycodec.String(),
+		codec.JSON[indexedUser](),
+		func(value indexedUser) string { return value.ID },
+		badgerx.WithModelIndex[string, indexedUser](teamIndex),
+	)
+
+	ctx := context.Background()
+	if _, err := store.Create(ctx, indexedUser{ID: "u1", Email: "b@example.com", Name: "team-a"}); err != nil {
+		t.Fatalf("create first failed: %v", err)
+	}
+	if _, err := store.Create(ctx, indexedUser{ID: "u2", Email: "a@example.com", Name: "team-a"}); err != nil {
+		t.Fatalf("create second failed: %v", err)
+	}
+	if _, err := store.Create(ctx, indexedUser{ID: "u3", Email: "c@example.com", Name: "team-b"}); err != nil {
+		t.Fatalf("create third failed: %v", err)
+	}
+
+	values, err := teamIndex.List(ctx, store, "team-a", false)
+	if err != nil {
+		t.Fatalf("ordered list failed: %v", err)
+	}
+	if len(values) != 2 || values[0].Email != "a@example.com" || values[1].Email != "b@example.com" {
+		t.Fatalf("unexpected ordered values: %#v", values)
+	}
+
+	page, err := teamIndex.Page(ctx, store, "team-a", "", 1, false)
+	if err != nil {
+		t.Fatalf("ordered page failed: %v", err)
+	}
+	if !page.HasMore || page.NextCursor == "" || len(page.Entries) != 1 || page.Entries[0].Value.Email != "a@example.com" {
+		t.Fatalf("unexpected first ordered page: %#v", page)
+	}
+
+	nextPage, err := teamIndex.Page(ctx, store, "team-a", page.NextCursor, 1, false)
+	if err != nil {
+		t.Fatalf("ordered next page failed: %v", err)
+	}
+	if len(nextPage.Entries) != 1 || nextPage.Entries[0].Value.Email != "b@example.com" {
+		t.Fatalf("unexpected second ordered page: %#v", nextPage)
+	}
+}

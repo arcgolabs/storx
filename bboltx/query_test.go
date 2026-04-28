@@ -144,6 +144,44 @@ func TestIterAndWalk(t *testing.T) {
 	}
 }
 
+func TestPage(t *testing.T) {
+	users := newQueryBucket(t)
+	ctx := context.Background()
+
+	firstPage, err := users.Page(ctx, "", bboltx.WithLimit[string](1))
+	if err != nil {
+		t.Fatalf("first page failed: %v", err)
+	}
+	if !firstPage.HasMore || firstPage.NextCursor == "" {
+		t.Fatalf("expected first page to have next cursor: %#v", firstPage)
+	}
+	if len(firstPage.Entries) != 1 || firstPage.Entries[0].Key != "a/1" {
+		t.Fatalf("unexpected first page: %#v", firstPage.Entries)
+	}
+
+	secondPage, err := users.Page(ctx, firstPage.NextCursor, bboltx.WithLimit[string](1))
+	if err != nil {
+		t.Fatalf("second page failed: %v", err)
+	}
+	if len(secondPage.Entries) != 1 || secondPage.Entries[0].Key != "a/2" {
+		t.Fatalf("unexpected second page: %#v", secondPage.Entries)
+	}
+
+	reversePage, err := users.Page(
+		ctx,
+		"",
+		bboltx.WithPrefix[string]([]byte("a/")),
+		bboltx.WithLimit[string](1),
+		bboltx.WithReverse[string](true),
+	)
+	if err != nil {
+		t.Fatalf("reverse page failed: %v", err)
+	}
+	if len(reversePage.Entries) != 1 || reversePage.Entries[0].Key != "a/2" {
+		t.Fatalf("unexpected reverse page: %#v", reversePage.Entries)
+	}
+}
+
 func newQueryBucket(t *testing.T) *bboltx.Bucket[string, user] {
 	t.Helper()
 
