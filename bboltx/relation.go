@@ -3,6 +3,7 @@ package bboltx
 import (
 	"context"
 
+	collectionset "github.com/arcgolabs/collectionx/set"
 	"github.com/arcgolabs/storx/keycodec"
 )
 
@@ -259,10 +260,9 @@ func (r *OrderedToManyRelation[S, K, V, IK, SK]) Preload(ctx context.Context, so
 }
 
 func collectUniqueRelationKeys[S any, IK any](sources []S, keyOf func(S) IK, keys keycodec.Codec[IK]) ([]IK, []string, map[string]string, error) {
-	uniqueKeys := make([]IK, 0, len(sources))
-	encodedKeys := make([]string, 0, len(sources))
+	orderedEncodedKeys := collectionset.NewOrderedSetWithCapacity[string](len(sources))
+	keyByEncoded := make(map[string]IK, len(sources))
 	indexByEncoded := make(map[string]string, len(sources))
-	seen := make(map[string]struct{}, len(sources))
 	for _, source := range sources {
 		key := keyOf(source)
 		encodedKey, err := keys.EncodeKey(key)
@@ -270,13 +270,17 @@ func collectUniqueRelationKeys[S any, IK any](sources []S, keyOf func(S) IK, key
 			return nil, nil, nil, err
 		}
 		encodedString := string(encodedKey)
-		if _, ok := seen[encodedString]; ok {
+		if orderedEncodedKeys.Contains(encodedString) {
 			continue
 		}
-		seen[encodedString] = struct{}{}
-		uniqueKeys = append(uniqueKeys, key)
-		encodedKeys = append(encodedKeys, encodedString)
+		orderedEncodedKeys.Add(encodedString)
+		keyByEncoded[encodedString] = key
 		indexByEncoded[encodedString] = encodedString
+	}
+	encodedKeys := orderedEncodedKeys.Values()
+	uniqueKeys := make([]IK, 0, len(encodedKeys))
+	for _, encodedKey := range encodedKeys {
+		uniqueKeys = append(uniqueKeys, keyByEncoded[encodedKey])
 	}
 	return uniqueKeys, encodedKeys, indexByEncoded, nil
 }
@@ -289,8 +293,8 @@ func collectManyRelationPrimaries[IK any, K any, V any](
 	bucket *Bucket[K, V],
 ) (map[string][]string, []K, error) {
 	primariesByRelation := make(map[string][]string, len(keyOrder))
-	orderedPrimaryKeys := make([]K, 0)
-	seenPrimary := make(map[string]struct{})
+	orderedEncodedPrimaries := collectionset.NewOrderedSet[string]()
+	primaryByEncoded := make(map[string]K)
 
 	for idx, key := range keyOrder {
 		primaries, err := listPrimaries(ctx, key)
@@ -306,13 +310,17 @@ func collectManyRelationPrimaries[IK any, K any, V any](
 			}
 			encodedString := string(encodedPrimary)
 			encodedPrimaries = append(encodedPrimaries, encodedString)
-			if _, ok := seenPrimary[encodedString]; ok {
+			if orderedEncodedPrimaries.Contains(encodedString) {
 				continue
 			}
-			seenPrimary[encodedString] = struct{}{}
-			orderedPrimaryKeys = append(orderedPrimaryKeys, primary)
+			orderedEncodedPrimaries.Add(encodedString)
+			primaryByEncoded[encodedString] = primary
 		}
 		primariesByRelation[encodedRelation] = encodedPrimaries
+	}
+	orderedPrimaryKeys := make([]K, 0, orderedEncodedPrimaries.Len())
+	for _, encodedPrimary := range orderedEncodedPrimaries.Values() {
+		orderedPrimaryKeys = append(orderedPrimaryKeys, primaryByEncoded[encodedPrimary])
 	}
 	return primariesByRelation, orderedPrimaryKeys, nil
 }
