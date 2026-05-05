@@ -3,7 +3,7 @@ module github.com/arcgolabs/storx/bboltx
 go 1.26.2
 
 require (
-	github.com/arcgolabs/collectionx/set v0.6.0
+	github.com/arcgolabs/collectionx/set v0.7.0
 	github.com/arcgolabs/storx v0.2.0
 	github.com/arcgolabs/storx/codec v0.1.0
 	github.com/arcgolabs/storx/keycodec v0.2.0
