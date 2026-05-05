@@ -1,9 +1,7 @@
-github.com/arcgolabs/collectionx/internal v0.6.0 h1:N6iI2XOdZFYM4zTdnqR7yOXz+8HassO39Rn2PtiwYJ0=
-github.com/arcgolabs/collectionx/internal v0.6.0/go.mod h1:H1Ihoa7PvEUJvLCjhQwydHLe6ClyIln7ZzpkuJKtB0c=
-github.com/arcgolabs/collectionx/list v0.6.0 h1:v87Z6xVY4KzehmUIhkNFcMJg/HbUCmbFl7dNgtkOk80=
-github.com/arcgolabs/collectionx/list v0.6.0/go.mod h1:IjX8ZRyMZbJspx+VppjyrOaibDnHSY8/jkygk9Mmws4=
-github.com/arcgolabs/collectionx/mapping v0.6.0 h1:df0uX/gNjZjQCDUj98xi7J4l2CWaghq//xN1VnV2jj4=
-github.com/arcgolabs/collectionx/mapping v0.6.0/go.mod h1:9LmFTF7m/hJ3vYx/SkcaHPBHDj2nSPImBYGyHflWEXA=
+github.com/arcgolabs/collectionx/list v0.7.0 h1:1BBQD0tB6cPr2rFBHgBM1Orqs9wH+OH/QrfEmMJ+fLE=
+github.com/arcgolabs/collectionx/list v0.7.0/go.mod h1:IjX8ZRyMZbJspx+VppjyrOaibDnHSY8/jkygk9Mmws4=
+github.com/arcgolabs/collectionx/mapping v0.7.0 h1:5XYl9ml3JjNZsCJ/tUmTx2NjxiGpOnUlg6cTtILUMh8=
+github.com/arcgolabs/collectionx/mapping v0.7.0/go.mod h1:9LmFTF7m/hJ3vYx/SkcaHPBHDj2nSPImBYGyHflWEXA=
 github.com/arcgolabs/collectionx/set v0.7.0 h1:WgICBjMIViYbk7OqYgSQcG67iMnh4zrQFtuBq/8dyXQ=
 github.com/arcgolabs/collectionx/set v0.7.0/go.mod h1:ZwKKXMlMhgXM+rP4daDm849gVM3yTuOlA+2Zoqv2HUM=
 github.com/arcgolabs/storx v0.2.0 h1:V6EozKSEmZoqhXlnq9J9/YBB/2ogus5qLBdcm5efOSM=

@@ -70,6 +70,29 @@ func TestListKeysValues(t *testing.T) {
 	if len(values) != 1 || values[0].Name != "alice" {
 		t.Fatalf("unexpected values: %#v", values)
 	}
+
+	entryList, err := users.EntryList(ctx, badgerx.WithPrefix[string]([]byte("a/")))
+	if err != nil {
+		t.Fatalf("entry list failed: %v", err)
+	}
+	if entryList.Len() != 2 {
+		t.Fatalf("unexpected entry list length: %d", entryList.Len())
+	}
+	keyList, err := users.KeyList(ctx, badgerx.WithStart("a/2"), badgerx.WithEnd("b/1"))
+	if err != nil {
+		t.Fatalf("key list failed: %v", err)
+	}
+	if !keyList.AnyMatch(func(_ int, key string) bool { return key == "b/1" }) {
+		t.Fatalf("expected key list to include b/1: %#v", keyList.Values())
+	}
+	valueList, err := users.ValueList(ctx, badgerx.WithPrefix[string]([]byte("a/")))
+	if err != nil {
+		t.Fatalf("value list failed: %v", err)
+	}
+	firstValue, ok := valueList.GetFirst()
+	if !ok || firstValue.Name != "alice" {
+		t.Fatalf("unexpected first collection value: ok=%v value=%#v", ok, firstValue)
+	}
 }
 
 func TestGetMany(t *testing.T) {

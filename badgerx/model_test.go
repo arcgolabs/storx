@@ -499,3 +499,116 @@ func TestModelStoreOrderedIndexAndPage(t *testing.T) {
 		t.Fatalf("unexpected ordered filtered values: %#v", filtered)
 	}
 }
+
+func TestModelIndexQueryBuilder(t *testing.T) {
+	db := openBadger(t)
+	emailIndex := badgerx.NewSecondaryIndex[string, indexedUser, string](
+		db,
+		"users_by_email",
+		keycodec.String(),
+		keycodec.String(),
+		func(value indexedUser) string { return value.Email },
+	)
+	teamIndex := badgerx.NewSecondaryIndexMany[string, indexedUser, string](
+		db,
+		"users_by_team",
+		keycodec.String(),
+		keycodec.String(),
+		func(value indexedUser) string { return value.Name },
+	)
+	orderedTeamIndex := badgerx.NewSecondaryIndexOrdered[string, indexedUser, string, string](
+		db,
+		"users_by_team_email",
+		keycodec.String(),
+		keycodec.String(),
+		keycodec.String(),
+		func(value indexedUser) string { return value.Name },
+		func(value indexedUser) string { return value.Email },
+	)
+	store := badgerx.NewModelStore[string, indexedUser](
+		db,
+		"users",
+		keycodec.String(),
+		codec.JSON[indexedUser](),
+		func(value indexedUser) string { return value.ID },
+		badgerx.WithModelIndex[string, indexedUser](emailIndex),
+		badgerx.WithModelIndex[string, indexedUser](teamIndex),
+		badgerx.WithModelIndex[string, indexedUser](orderedTeamIndex),
+	)
+
+	ctx := context.Background()
+	if _, err := store.Create(ctx, indexedUser{ID: "u1", Email: "b@example.com", Name: "team-a"}); err != nil {
+		t.Fatalf("create first failed: %v", err)
+	}
+	if _, err := store.Create(ctx, indexedUser{ID: "u2", Email: "a@example.com", Name: "team-a"}); err != nil {
+		t.Fatalf("create second failed: %v", err)
+	}
+	if _, err := store.Create(ctx, indexedUser{ID: "u3", Email: "c@example.com", Name: "team-b"}); err != nil {
+		t.Fatalf("create third failed: %v", err)
+	}
+
+	value, ok, err := emailIndex.Query(store, "a@example.com").First(ctx)
+	if err != nil {
+		t.Fatalf("unique query failed: %v", err)
+	}
+	if !ok || value.Email != "a@example.com" {
+		t.Fatalf("unexpected unique query result: ok=%v value=%#v", ok, value)
+	}
+	count, err := emailIndex.Query(store, "a@example.com").Where(func(value indexedUser) bool {
+		return value.Name == "team-a"
+	}).Count(ctx)
+	if err != nil {
+		t.Fatalf("unique query count failed: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected unique query count 1, got %d", count)
+	}
+
+	values, err := teamIndex.Query(store, "team-a").Where(func(value indexedUser) bool {
+		return value.Email >= "b@example.com"
+	}).Limit(1).Find(ctx)
+	if err != nil {
+		t.Fatalf("many query failed: %v", err)
+	}
+	if len(values) != 1 || values[0].Email != "b@example.com" {
+		t.Fatalf("unexpected many query values: %#v", values)
+	}
+	valueList, err := teamIndex.Query(store, "team-a").ValueList(ctx)
+	if err != nil {
+		t.Fatalf("many query value list failed: %v", err)
+	}
+	if valueList.Len() != 2 || !valueList.AnyMatch(func(_ int, value indexedUser) bool {
+		return value.Email == "a@example.com"
+	}) {
+		t.Fatalf("unexpected collectionx value list: %#v", valueList.Values())
+	}
+
+	page, err := orderedTeamIndex.Query(store, "team-a").Reverse().Page(ctx, "", 1)
+	if err != nil {
+		t.Fatalf("ordered query page failed: %v", err)
+	}
+	if len(page.Entries) != 1 || page.Entries[0].Value.Email != "b@example.com" {
+		t.Fatalf("unexpected ordered query page: %#v", page)
+	}
+	entryList, err := orderedTeamIndex.Query(store, "team-a").Reverse().EntryList(ctx)
+	if err != nil {
+		t.Fatalf("ordered query entry list failed: %v", err)
+	}
+	firstEntry, ok := entryList.GetFirst()
+	if !ok || firstEntry.Value.Email != "b@example.com" {
+		t.Fatalf("unexpected collectionx entry list first entry: ok=%v entry=%#v", ok, firstEntry)
+	}
+
+	if err := teamIndex.Query(store, "team-a").Where(func(value indexedUser) bool {
+		return value.Email == "a@example.com"
+	}).Delete(ctx); err != nil {
+		t.Fatalf("filtered delete failed: %v", err)
+	}
+	count, err = teamIndex.Query(store, "team-a").Count(ctx)
+	if err != nil {
+		t.Fatalf("count after filtered delete failed: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected one team-a user after filtered delete, got %d", count)
+	}
+}
